@@ -108,7 +108,7 @@ Resources:
       FunctionName: CelebrityRecognitionHandler
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: python3.9
+      Runtime: python3.11
       Environment:
         Variables:
           TABLE_NAME: !Ref CelebrityResultsTable
