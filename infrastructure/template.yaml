@@ -1,5 +1,4 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: 'AWS::Serverless-2016-10-31'
 
 Parameters:
   UserEmail:
@@ -213,7 +212,7 @@ Resources:
 
             return {"status": "success", "processed_count": len(event['Records'])}}
 
-  # 7. SQS QUEUE & PERMISSION
+  # 7. SQS QUEUE & PERMISSIONS
   ImageProcessQueue:
     Type: AWS::SQS::Queue
 
