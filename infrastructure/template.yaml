@@ -7,6 +7,22 @@ Parameters:
     Description: Your email for celebrity alerts.
 
 Resources:
+  # 0. POLICIES
+  PipelineBucketAccessPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:sts::${AWS::AccountId}:assumed-role/AWSCodePipelineServiceRole-us-east-1-Celebrity-Detector-Sync/1768764038234"
+            Action: 
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
+
   # 1. THE WEBSITE HOSTING (S3)
   WebsiteBucket:
     Type: AWS::S3::Bucket
