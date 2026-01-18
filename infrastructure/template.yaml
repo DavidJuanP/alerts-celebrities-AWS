@@ -6,6 +6,33 @@ Parameters:
     Default: 'manugalang2007@gmail.com'
 
 Resources:
+  # 0. ROLES
+  MyPipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "AWSCodePipelineServiceRole-us-east-1-Celebrity-Detector-Sync"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3FullAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource: 
+                  - !Sub "arn:aws:s3:::celebrity-detector-app-websitebucket-*"
+                  - !Sub "arn:aws:s3:::celebrity-detector-app-websitebucket-*/*"
+
   # 1. THE WEBSITE HOSTING (S3)
   WebsiteBucket:
     Type: AWS::S3::Bucket
