@@ -1,159 +1,190 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: S3 to SQS to Lambda with Rekognition and DynamoDB.
-# The test actually worked!!!
+Transform: 'AWS::Serverless-2016-10-31'
+
+Parameters:
+  UserEmail:
+    Type: String
+    Description: Your email for celebrity alerts.
+
 Resources:
-  # 0. This bucket is not part of the architecture: just a test to verify if CF actually receives new changes
-  MyBucket:
+  # 1. THE WEBSITE HOSTING
+  WebsiteBucket:
     Type: AWS::S3::Bucket
     Properties:
-      Tags:
-        - Key: PipelineTest
-          Value: UpdateSuccessful
-# 0.1 This bucket is not part of the architecture: just a test to verify if CF actually receives new changes
-  # First Bucket
-  PrimaryCelebrityBucket: # Unique Logical ID 1
-    Type: AWS::S3::Bucket
-    Properties:
-      Tags:
-        - Key: PipelineTest
-          Value: FirstBucketSuccess
-  # Second Bucket
-  BackupCelebrityBucket: # Unique Logical ID 2
-    Type: AWS::S3::Bucket
-    Properties:
-      Tags:
-        - Key: PipelineTest
-          Value: SecondBucketSuccess
-  # 1. DynamoDB Table
-  CelebrityResultsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: CelebrityDetectionResults
-      AttributeDefinitions:
-        - AttributeName: ImageKey
-          AttributeType: S
-      KeySchema:
-        - AttributeName: ImageKey
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      WebsiteConfiguration:
+        IndexDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
 
-  # 2. SQS Queue
-  ImageProcessQueue:
-    Type: AWS::SQS::Queue
+  WebsitePolicy:
+    Type: AWS::S3::BucketPolicy
     Properties:
-      QueueName: image-processing-queue
-
-  # 3. SQS Policy (Allows S3 to send messages)
-  QueuePolicy:
-    Type: AWS::SQS::QueuePolicy
-    Properties:
-      Queues:
-        - !Ref ImageProcessQueue
+      Bucket: !Ref WebsiteBucket
       PolicyDocument:
-        Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal:
-              Service: s3.amazonaws.com
-            Action: sqs:SendMessage
-            Resource: !GetAtt ImageProcessQueue.Arn
-            Condition:
-              ArnLike:
-                # We hardcode the ARN structure to break the dependency loop
-                aws:SourceArn: !Sub "arn:aws:s3:::celebrity-upload-bucket-${AWS::AccountId}"
-  # 4. S3 Bucket
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
+
+  # 2. THE IMAGE UPLOAD BUCKET (With CORS for the browser)
   ImageBucket:
     Type: AWS::S3::Bucket
-    DependsOn: QueuePolicy
     Properties:
-      BucketName: !Sub "celebrity-upload-bucket-${AWS::AccountId}"
+      BucketName: !Sub "celebrity-upload-${AWS::AccountId}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [PUT, POST]
+            AllowedOrigins: ['*'] # Restrict this to your website URL later
       NotificationConfiguration:
         QueueConfigurations:
           - Event: s3:ObjectCreated:*
             Queue: !GetAtt ImageProcessQueue.Arn
 
-  # 5. Lambda Execution Role
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
+  # 3. SNS & DYNAMODB
+  CelebrityResultsTable:
+    Type: AWS::Serverless::SimpleTable
     Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: LambdaPermissions
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                  - s3:GetObject
-                  - rekognition:RecognizeCelebrities
-                  - dynamodb:PutItem
-                  - sqs:ReceiveMessage
-                  - sqs:DeleteMessage
-                  - sqs:GetQueueAttributes
-                Resource: "*"
+      PrimaryKey: {Name: ImageKey, Type: String}
 
-  # 6. Lambda Function
-  CelebrityLambda:
-    Type: AWS::Lambda::Function
+  CelebrityAlertTopic:
+    Type: AWS::SNS::Topic
+
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
     Properties:
-      FunctionName: CelebrityRecognitionHandler
+      TopicArn: !Ref CelebrityAlertTopic
+      Protocol: email
+      Endpoint: !Ref UserEmail
+
+  # 4. THE PROCESSING LAMBDA (Rekognition + SNS)
+  ProcessingLambda:
+    Type: AWS::Serverless::Function
+    Properties:
       Handler: index.handler
-      Role: !GetAtt LambdaExecutionRole.Arn
       Runtime: python3.11
       Environment:
         Variables:
           TABLE_NAME: !Ref CelebrityResultsTable
+          SNS_TOPIC_ARN: !Ref CelebrityAlertTopic
+      Policies:
+        - AmazonRekognitionFullAccess
+        - AmazonS3ReadOnlyAccess
+        - DynamoDBCrudPolicy: {TableName: !Ref CelebrityResultsTable}
+        - SNSPublishMessagePolicy: {TopicName: !GetAtt CelebrityAlertTopic.TopicName}
+      Events:
+        QueueEvent:
+          Type: SQS
+          Properties:
+            QueueArn: !GetAtt ImageProcessQueue.Arn
       Code:
         ZipFile: |
           import boto3
           import os
           import json
+          import urllib.parse
+          import logging
 
+          # Set up logging for CloudWatch
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          # Initialize clients outside the handler for better performance
           rekognition = boto3.client('rekognition')
           dynamodb = boto3.resource('dynamodb')
-          table = dynamodb.Table(os.environ['TABLE_NAME'])
+          sns = boto3.client('sns')
 
           def handler(event, context):
-              for record in event['Records']:
-                  # SQS body contains the S3 event
-                  s3_event = json.loads(record['body'])
-                  if 'Records' not in s3_event: continue
-                  
-                  for s3_rec in s3_event['Records']:
-                      bucket = s3_rec['s3']['bucket']['name']
-                      key = s3_rec['s3']['object']['key']
-                      
-                      # Call Rekognition
-                      response = rekognition.recognize_celebrities(
-                          Image={'S3Object': {'Bucket': bucket, 'Name': key}}
-                      )
-                      
-                      celebs = response.get('CelebrityFaces', [])
-                      is_celebrity = len(celebs) > 0
-                      celeb_name = str(celebs[0]['Name']) if is_celebrity else "None"
-                      
-                      # Save to DynamoDB
-                      table.put_item(Item={
-                          'ImageKey': key,
-                          'IsCelebrity': is_celebrity,
-                          'CelebrityName': celeb_name,
-                          'Bucket': bucket
-                      })
-              return {"status": "success"}
+            table = dynamodb.Table(os.environ['TABLE_NAME'])
+            sns_topic = os.environ['SNS_TOPIC_ARN']
+            
+            logger.info(f"Received event: {json.dumps(event)}")
+            
+            for record in event['Records']:
+                try:
+                    # 1. SQS wraps the S3 event in a string called 'body'
+                    s3_event = json.loads(record['body'])
+                    
+                    # Skip if it's a test event or doesn't contain 'Records'
+                    if 'Records' not in s3_event:
+                        continue
+                        
+                    for s3_rec in s3_event['Records']:
+                        # 2. Extract Bucket and Key (unquote handles special chars in filename)
+                        bucket = s3_rec['s3']['bucket']['name']
+                        raw_key = s3_rec['s3']['object']['key']
+                        key = urllib.parse.unquote_plus(raw_key)
+                        
+                        logger.info(f"Processing file: {key} from bucket: {bucket}")
+                        
+                        # 3. Call Amazon Rekognition
+                        response = rekognition.recognize_celebrities(
+                            Image={'S3Object': {'Bucket': bucket, 'Name': key}}
+                        )
+                        
+                        # 4. Parse Results
+                        celebs = response.get('CelebrityFaces', [])
+                        unrecognized = response.get('UnrecognizedFaces', [])
+                        
+                        if celebs:
+                            celeb = celebs[0] # Get the most prominent celebrity
+                            celeb_name = celeb.get('Name', 'Unknown')
+                            confidence = str(celeb.get('MatchConfidence', 0))
+                            urls = celeb.get('Urls', [])
+                            id_val = celeb.get('Id', 'N/A')
+                        else:
+                            celeb_name = "No Celebrity Detected"
+                            confidence = "0"
+                            urls = []
+                        
+                        # 5. Save to DynamoDB
+                        table.put_item(
+                            Item={
+                                'ImageKey': key,
+                                'CelebrityName': celeb_name,
+                                'Confidence': confidence,
+                                'Bucket': bucket,
+                                'FaceCount': len(celebs) + len(unrecognized)
+                            }
+                        )
+                        
+                        # 6. Send SNS Alert
+                        notification_msg = (
+                            f"Celebrity Detection Results:\n"
+                            f"----------------------------\n"
+                            f"File: {key}\n"
+                            f"Detected: {celeb_name}\n"
+                            f"Confidence: {confidence}%\n"
+                            f"More Info: {urls[0] if urls else 'None'}"
+                        )
+                        
+                        sns.publish(
+                            TopicArn=sns_topic,
+                            Message=notification_msg,
+                            Subject=f"Celebrity Alert: {celeb_name}"
+                        )
+                        
+                except Exception as e:
+                    logger.error(f"Error processing record: {str(e)}")
+                    # In a production environment, you might want to re-raise this 
+                    # so the message goes to a Dead Letter Queue (DLQ)
+                    continue
 
-  # 7. SQS-to-Lambda Trigger
-  LambdaEventSourceMapping:
-    Type: AWS::Lambda::EventSourceMapping
+            return {"status": "success", "processed_count": len(event['Records'])}}
+
+  # 5. SQS & PERMISSIONS
+  ImageProcessQueue:
+    Type: AWS::SQS::Queue
+
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
     Properties:
-      BatchSize: 10
-      EventSourceArn: !GetAtt ImageProcessQueue.Arn
-      FunctionName: !Ref CelebrityLambda
+      Queues: [!Ref ImageProcessQueue]
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: {Service: s3.amazonaws.com}
+            Action: sqs:SendMessage
+            Resource: !GetAtt ImageProcessQueue.Arn
