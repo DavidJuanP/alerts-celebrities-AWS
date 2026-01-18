@@ -26,20 +26,15 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              # We use the IAM Role ARN that corresponds to your assumed-role error
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:role/service-role/AWSCodePipelineServiceRole-us-east-1-Celebrity-Detector-Sync"
             Action: 
               - s3:PutObject
-              - s3:PutObjectAcl
+              - s3:PutObjectAcl  # ADD THIS LINE
               - s3:GetBucketLocation
               - s3:ListBucket
             Resource: 
               - !Sub "arn:aws:s3:::${WebsiteBucket}"
               - !Sub "arn:aws:s3:::${WebsiteBucket}/*"
-          - Effect: Allow
-            Principal: "*"
-            Action: s3:GetObject
-            Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
 
   # 3. THE IMAGE UPLOAD BUCKET
   ImageBucket:
