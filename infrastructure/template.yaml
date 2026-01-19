@@ -142,12 +142,12 @@ Resources:
       BatchSize: 10
       EventSourceArn: !GetAtt ImageProcessQueue.Arn
       FunctionName: !Ref CelebrityLambda
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codepipeline.amazonaws.com
-            Action: "sts:AssumeRole"
+      Version: "2012-10-17"
+      Statement:
+        - Effect: Allow
+          Principal:
+            Service: codepipeline.amazonaws.com
+          Action: "sts:AssumeRole"
       Policies:
         - PolicyName: PipelineExtendedAccess
           PolicyDocument:
@@ -161,5 +161,3 @@ Resources:
                   - codeconnections:UseConnection # THIS IS THE MISSING KEY
                   - codestar-connections:UseConnection
                 Resource: "*"
-
-
