@@ -135,6 +135,15 @@ Resources:
                           'CelebrityName': celeb_name,
                           'Bucket': bucket
                       })
+
+                                  # Publicar en SNS si hay un famoso
+                      if is_celebrity:
+                          message = f"Se detectó al famoso {celeb_name} en la imagen {key} del bucket {bucket}."
+                          sns.publish(
+                              TopicArn=sns_topic_arn,
+                              Message=message,
+                              Subject="Alerta de Celebridad Detectada"
+                          )
               return {"status": "success"}
 
   # 7. SQS-to-Lambda Trigger
