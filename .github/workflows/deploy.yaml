@@ -1,8 +1,0 @@
-version: 1.0
-template-file-path: template.yaml
-# This tells CloudFormation to use the existing stack name 
-# instead of trying to create a new one.
-stack-name: Celebrity-Detector-App
-parameters: {}
-tags:
-  ManagedBy: GitHub
