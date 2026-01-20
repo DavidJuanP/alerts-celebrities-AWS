@@ -305,21 +305,21 @@ Resources:
       IntegrationMethod: POST
       PayloadFormatVersion: "2.0"
 
-  Route:
+  UploadRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "POST /upload-url"
-      Target: !Sub integrations/${UploadIntegration}
+      Target: !Sub integrations/${UploadIntegration.Ref}
 
-  Stage:
+  UploadStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
       ApiId: !Ref HttpApi
       StageName: "$default"
       AutoDeploy: true
 
-  Permission:
+  UploadPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref UploadLambda
