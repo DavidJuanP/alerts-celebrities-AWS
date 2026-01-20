@@ -1,20 +1,30 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Serverless image upload app (Static Web + API) WITHOUT Route53
+Description: Full serverless image upload app with static website, Lambda, API Gateway, S3 uploads, CloudFront and Route53
 
 Parameters:
   WebBucketName:
     Type: String
     Default: image-upload-web-498747779442
+    Description: Bucket for static website files
 
   UploadBucketName:
     Type: String
     Default: celebrity-upload-498747779442
+    Description: Bucket for uploaded images (private)
+
+  DomainName:
+    Type: String
+    Description: Your custom domain (e.g. upload.midominio.com)
+
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for your domain
 
 Resources:
 
-# ----------------------------
-# S3 - WEB
-# ----------------------------
+# ==================================================
+# S3 Web Bucket
+# ==================================================
   WebBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -27,25 +37,18 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  WebBucketPolicy:
-    Type: AWS::S3::BucketPolicy
+# ==================================================
+# CloudFront Distribution
+# ==================================================
+  WebCertificate:
+    Type: AWS::CertificateManager::Certificate
     Properties:
-      Bucket: !Ref WebBucket
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: cloudfront.amazonaws.com
-            Action: s3:GetObject
-            Resource: !Sub ${WebBucket.Arn}/*
-            Condition:
-              StringEquals:
-                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebDistribution}
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
 
-# ----------------------------
-# CLOUDFRONT
-# ----------------------------
   WebDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -63,12 +66,29 @@ Resources:
           CachedMethods: [GET, HEAD]
           ForwardedValues:
             QueryString: false
+        Aliases:
+          - !Ref DomainName
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: !Ref WebCertificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
 
-# ----------------------------
-# S3 - UPLOADS
-# ----------------------------
+# ==================================================
+# Route53 Record
+# ==================================================
+  WebsiteDNS:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt WebDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront fixed HostedZoneId
+
+# ==================================================
+# S3 Uploads Bucket
+# ==================================================
   UploadBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -79,9 +99,9 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-# ----------------------------
-# IAM ROLE
-# ----------------------------
+# ==================================================
+# IAM Role for Lambda
+# ==================================================
   LambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -108,9 +128,9 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-# ----------------------------
-# LAMBDA (PYTHON)
-# ----------------------------
+# ==================================================
+# Lambda Function
+# ==================================================
   UploadLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -131,7 +151,9 @@ Resources:
 
           def lambda_handler(event, context):
               body = json.loads(event.get("body","{}"))
-              if body.get("contentType") not in ALLOWED:
+              if "filename" not in body or "contentType" not in body:
+                  return resp(400,"Missing filename or contentType")
+              if body["contentType"] not in ALLOWED:
                   return resp(400,"Invalid type")
               key = f"uploads/{int(time.time())}-{body['filename']}"
               url = s3.generate_presigned_url(
@@ -144,9 +166,9 @@ Resources:
           def resp(c,m):
               return {"statusCode":c,"headers":{"Access-Control-Allow-Origin":"*"},"body":json.dumps({"error":m})}
 
-# ----------------------------
-# API GATEWAY
-# ----------------------------
+# ==================================================
+# API Gateway
+# ==================================================
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
@@ -180,7 +202,7 @@ Resources:
       StageName: "$default"
       AutoDeploy: true
 
-  Permission:
+  LambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref UploadLambda
@@ -188,9 +210,14 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub ${HttpApi.ExecutionArn}/*/*
 
+# ==================================================
+# Outputs
+# ==================================================
 Outputs:
   WebsiteURL:
-    Value: !Sub https://${WebDistribution.DomainName}
-  UploadApiUrl:
-    Value: !Sub ${HttpApi.ApiEndpoint}/upload-url
+    Description: URL of the static website via CloudFront
+    Value: !Sub https://${DomainName}
 
+  UploadApiUrl:
+    Description: API endpoint for uploading images
+    Value: !Sub ${HttpApi.ApiEndpoint}/upload-url
