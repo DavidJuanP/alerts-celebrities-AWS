@@ -233,7 +233,7 @@ LambdaUploadRole:
             Service: lambda.amazonaws.com
           Action: sts:AssumeRole
     Policies:
-      - PolicyName: upload_policy
+      - PolicyName: uploadpolicy
         PolicyDocument:
           Version: "2012-10-17"
           Statement:
