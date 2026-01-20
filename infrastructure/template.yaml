@@ -184,7 +184,7 @@ Resources:
   WebBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref WebBucket
+      Bucket: !Sub "web-bucket-html-${AWS::AccountId}"
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
