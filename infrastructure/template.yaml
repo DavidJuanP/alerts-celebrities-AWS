@@ -111,7 +111,7 @@ Resources:
           import boto3
           import os
           import json
-          from datetime import datetime, timezone
+
 
           rekognition = boto3.client('rekognition')
           dynamodb = boto3.resource('dynamodb')
@@ -150,7 +150,7 @@ Resources:
                           'CelebrityName': celeb_name,
                           'MatchConfidence': match_confidence,
                           'Bucket': bucket
-                          'CreatedAt': datetime.now(timezone.utc).isoformat()
+
                       })
 
                       # Publicar en SNS si hay un famoso
