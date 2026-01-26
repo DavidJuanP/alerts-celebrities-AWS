@@ -407,3 +407,12 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
+  MyRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: alertas-imagenes-AWS-celebridades.com.  # Reemplaza con tu dominio
+      Name: www.alertas-imagenes-AWS-celebridades.com.        # Subdominio deseado
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt MyCloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # Hosted Zone ID de CloudFront, siempre es esta
