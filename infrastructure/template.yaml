@@ -111,7 +111,7 @@ Resources:
           import boto3
           import os
           import json
-
+          from datetime import datetime, timezone
 
           rekognition = boto3.client('rekognition')
           dynamodb = boto3.resource('dynamodb')
@@ -136,21 +136,15 @@ Resources:
                       
                       celebs = response.get('CelebrityFaces', [])
                       is_celebrity = len(celebs) > 0
-                      if is_celebrity:
-                          celeb_name = str(celebs[0].get('Name', 'Unknown'))
-                          match_confidence = float(celebs[0].get('MatchConfidence', 0.0))
-                      else:
-                          celeb_name = "None"
-                          match_confidence = 0.0
+                      celeb_name = str(celebs[0]['Name']) if is_celebrity else "None"
                       
                       # Save to DynamoDB
                       table.put_item(Item={
                           'ImageKey': key,
                           'IsCelebrity': is_celebrity,
                           'CelebrityName': celeb_name,
-                          'MatchConfidence': match_confidence,
                           'Bucket': bucket
-
+                          'CreatedAt': datetime.now(timezone.utc).isoformat()
                       })
 
                       # Publicar en SNS si hay un famoso
