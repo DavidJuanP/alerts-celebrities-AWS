@@ -1,5 +1,4 @@
 import json, boto3, os, time
-
 s3 = boto3.client("s3")
 BUCKET = os.environ["BUCKET_NAME"]
 ALLOWED = ["image/png","image/jpeg","image/jpg","image/gif","image/webp"]

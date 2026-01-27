@@ -1,6 +1,8 @@
 import boto3
 import os
 import json
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 rekognition = boto3.client('rekognition')
 dynamodb = boto3.resource('dynamodb')
@@ -26,13 +28,15 @@ def handler(event, context):
             celebs = response.get('CelebrityFaces', [])
             is_celebrity = len(celebs) > 0
             celeb_name = str(celebs[0]['Name']) if is_celebrity else "None"
+            now = datetime.now(ZoneInfo("Europe/Madrid")).isoformat()
 
             # Save to DynamoDB
             table.put_item(Item={
                 'ImageKey': key,
                 'IsCelebrity': is_celebrity,
                 'CelebrityName': celeb_name,
-                'Bucket': bucket
+                'Bucket': bucket,
+                'timestamp': now
             })
 
             # Publicar en SNS si hay un famoso
