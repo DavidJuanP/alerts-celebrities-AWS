@@ -46,7 +46,7 @@
           reader.readAsDataURL(file);
 
           try {
-            // 1️⃣ Pedir URL prefirmada (Lambda Python)
+            // 1. Pedir URL prefirmada (Lambda Python)
             const res = await fetch(PRESIGNED_API, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -63,7 +63,7 @@
 
             const { uploadUrl } = await res.json();
 
-            // 2️⃣ Subir a S3
+            // 2. Subir a S3
             const upload = await fetch(uploadUrl, {
               method: "PUT",
               body: file
