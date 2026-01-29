@@ -357,19 +357,3 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/POST/upload-url
-
-  # Con CodeBuild, podemos detectar el ID de la API en lugar de indicarlo explícitamente en el código
-  CodeBuildProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Name: !Sub ${AWS::StackName}-Deployer
-      ServiceRole: !GetAtt CodeBuildRole.Arn
-      Artifacts:
-        Type: CODEPIPELINE # Indica que recibe archivos de la Pipeline
-      Environment:
-        Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:4.0
-      Source:
-        Type: CODEPIPELINE
-        BuildSpec: buildspec.yml # El archivo que crearemos en el repo
