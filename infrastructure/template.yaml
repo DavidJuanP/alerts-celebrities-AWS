@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Detección de celebridades en imágenes con Rekognition.
+Description: Detección de celebridades en imágenes con el servicio Rekognition.
 
 Resources:
   # DynamoDB Table
